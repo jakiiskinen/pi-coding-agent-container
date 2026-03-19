@@ -2,3 +2,4 @@
 workspace
 .env
 experiments
+setup-azure-vm.config.ps1

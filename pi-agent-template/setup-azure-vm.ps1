@@ -9,22 +9,39 @@
 # =============================================================================
 
 param(
-    [string]$ResourceGroup     = "rg-antti-ai-coding-agent",
-    [string]$VmName            = "vm-antti-ai-coding-agent",
-    [string]$Location          = "northeurope",
-    [string]$VmSize            = "Standard_B4ms",
-    [string]$AdminUser         = "azureuser",
-    [string]$SshKeyPath        = "$HOME\.ssh\pi-agent-vm",
-    [int]   $DiskSizeGb        = 64,
-    [string]$AutoShutdownTime  = "2200",
-    [string]$TagOwner          = "antti.kiiskinen@adafy.com",
-    [string]$TagEnvironment    = "dev",
-    [string]$TagProject        = "ai-coding-agent"
+    [string]$ResourceGroup     = "",
+    [string]$VmName            = "",
+    [string]$Location          = "",
+    [string]$VmSize            = "",
+    [string]$AdminUser         = "",
+    [string]$SshKeyPath        = "",
+    [int]   $DiskSizeGb        = 0,
+    [string]$AutoShutdownTime  = "",
+    [string]$TagOwner          = "",
+    [string]$TagEnvironment    = "",
+    [string]$TagProject        = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $bicepFile = "$PSScriptRoot\bicep\main.bicep"
+
+# --- Load personal config defaults -------------------------------------------
+
+$configFile = "$PSScriptRoot\setup-azure-vm.config.ps1"
+if (-not (Test-Path $configFile)) {
+    Write-Error "Config file not found: $configFile`nCopy setup-azure-vm.config.example.ps1 to setup-azure-vm.config.ps1 and fill in your values."
+    Read-Host "Press Enter to close"
+    exit 1
+}
+$cfg = & $configFile
+foreach ($key in $cfg.Keys) {
+    $bound = $PSBoundParameters.ContainsKey($key)
+    $cur   = Get-Variable -Name $key -ValueOnly -ErrorAction SilentlyContinue
+    if (-not $bound -and (-not $cur -or ($cur -is [int] -and $cur -eq 0))) {
+        Set-Variable -Name $key -Value $cfg[$key]
+    }
+}
 
 # --- Prerequisites -----------------------------------------------------------
 

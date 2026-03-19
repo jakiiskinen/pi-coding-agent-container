@@ -5,7 +5,7 @@
 // =============================================================================
 
 @description('VM name')
-param vmName string = 'vm-antti-ai-coding-agent'
+param vmName string = 'vm-pi-coding-agent'
 
 @description('Location (defaults to resource group location)')
 param location string = resourceGroup().location
@@ -27,7 +27,7 @@ param diskSizeGb int = 64
 param autoShutdownTime string = '2200'
 
 @description('Owner tag')
-param tagOwner string = 'antti.kiiskinen@adafy.com'
+param tagOwner string = ''
 
 @description('Environment tag')
 param tagEnvironment string = 'dev'
