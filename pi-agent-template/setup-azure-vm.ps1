@@ -102,29 +102,6 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# --- Bicep What-If preview ---------------------------------------------------
-
-Write-Host ""
-Write-Host "Running what-if preview..."
-Write-Host ""
-$ErrorActionPreference = "Continue"
-az deployment group what-if `
-    --resource-group $ResourceGroup `
-    --template-file $bicepFile `
-    --parameters vmName=$VmName location=$Location vmSize=$VmSize `
-                 adminUsername=$AdminUser sshPublicKey=$sshPublicKey `
-                 diskSizeGb=$DiskSizeGb autoShutdownTime=$AutoShutdownTime `
-                 tagOwner=$TagOwner tagEnvironment=$TagEnvironment tagProject=$TagProject
-$ErrorActionPreference = "Stop"
-
-Write-Host ""
-$proceed = Read-Host "Proceed with deployment? [Y/n]"
-if ($proceed -eq "n") {
-    Write-Host "Deployment cancelled."
-    Read-Host "Press Enter to close"
-    exit 0
-}
-
 # --- Bicep Deployment --------------------------------------------------------
 
 Write-Host ""
@@ -174,35 +151,29 @@ az automation runbook create `
     --resource-group $ResourceGroup `
     --automation-account-name $automationAccount `
     --name $runbookName `
-    --type PowerShell72 `
+    --type PowerShell `
     --only-show-errors `
     --output none
 
-# Wait for runbook to be available (retry up to 60s)
-Write-Host "Waiting for runbook to register..."
-$ready = $false
+# Upload runbook content with retry (create may take a few seconds to propagate)
+Write-Host "Uploading runbook content..."
+$uploaded = $false
 for ($i = 0; $i -lt 12; $i++) {
-    Start-Sleep -Seconds 5
-    $check = az automation runbook show `
-        --resource-group $ResourceGroup `
-        --automation-account-name $automationAccount `
-        --name $runbookName `
-        --only-show-errors 2>$null
-    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
-    Write-Host "  Not ready yet, retrying... ($([int](($i+1)*5))s)"
-}
-
-if (-not $ready) {
-    Write-Host "WARNING: Runbook not found after 60s - skipping content upload."
-    Write-Host "         Re-run setup-azure-vm.bat to retry."
-} else {
+    if ($i -gt 0) { Start-Sleep -Seconds 5 }
     az automation runbook replace-content `
         --resource-group $ResourceGroup `
         --automation-account-name $automationAccount `
         --name $runbookName `
         --content (Get-Content $tmpFile -Raw) `
-        --only-show-errors
+        --only-show-errors 2>$null
+    if ($LASTEXITCODE -eq 0) { $uploaded = $true; break }
+    Write-Host "  Not ready yet, retrying... ($([int](($i+1)*5))s)"
+}
 
+if (-not $uploaded) {
+    Write-Host "WARNING: Runbook content upload failed after 60s - skipping."
+    Write-Host "         Re-run setup-azure-vm.bat to retry."
+} else {
     az automation runbook publish `
         --resource-group $ResourceGroup `
         --automation-account-name $automationAccount `
