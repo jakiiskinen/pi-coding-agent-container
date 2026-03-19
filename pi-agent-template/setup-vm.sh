@@ -62,15 +62,12 @@ sudo -u "$ACTUAL_USER" mkdir -p "$HOME_DIR/projects"
 TMUX_CONF="$HOME_DIR/.tmux.conf"
 if [ ! -f "$TMUX_CONF" ]; then
     sudo -u "$ACTUAL_USER" tee "$TMUX_CONF" > /dev/null <<'EOF'
-# Enable mouse support
 set -g mouse on
-# Increase scrollback buffer
 set -g history-limit 10000
-# Start window and pane numbering at 1
 set -g base-index 1
 setw -g pane-base-index 1
-# Show session name in status bar
 set -g status-right "#S"
+set -g remain-on-exit on
 EOF
     echo "Created ~/.tmux.conf"
 fi
