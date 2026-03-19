@@ -1,5 +1,12 @@
 param([switch]$Local)
 
+trap {
+    Write-Host ""
+    Write-Host "ERROR: $_" -ForegroundColor Red
+    Read-Host "Press Enter to close"
+    exit 1
+}
+
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $dir
 
