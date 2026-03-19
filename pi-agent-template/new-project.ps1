@@ -11,12 +11,12 @@ trap {
 
 $templateDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Load .env variables from template dir
-$envValues = @{}
+# Load values from template .env (shared credentials/Azure settings)
+$templateEnv = @{}
 if (Test-Path "$templateDir\.env") {
     Get-Content "$templateDir\.env" | ForEach-Object {
-        if ($_ -match '^\s*([^#=][^=]*)\s*=\s*(.*)\s*$') {
-            $envValues[$matches[1].Trim()] = $matches[2].Trim()
+        if ($_ -match '^\s*([^#=][^=]*)\s*=\s*(.+)\s*$') {
+            $templateEnv[$matches[1].Trim()] = $matches[2].Trim()
         }
     }
 }
@@ -51,48 +51,50 @@ foreach ($file in $files) {
 New-Item -ItemType Directory -Path "$target\workspace" | Out-Null
 New-Item -ItemType Directory -Path "$target\.pi-data"  | Out-Null
 
-if (Test-Path "$templateDir\.env") {
-    Copy-Item "$templateDir\.env" "$target\.env"
-} else {
-    Copy-Item "$target\.env.example" "$target\.env"
-}
+# Always create .env from .env.example as base
+Copy-Item "$target\.env.example" "$target\.env"
 
-# --- Auto-fill .env with values derivable from the local system --------------
+# --- Fill .env with all available values -------------------------------------
 
+# Fills a key in .env only if it is currently empty
 function Set-EnvValue {
     param([string]$FilePath, [string]$Key, [string]$Value)
     if (-not $Value) { return }
     $content = Get-Content $FilePath -Raw
-    # Only fill in if the key exists and is currently empty
     if ($content -match "(?m)^$Key=\s*$") {
         $content = $content -replace "(?m)^$Key=\s*$", "$Key=$Value"
         $content | Set-Content $FilePath -NoNewline
-        Write-Host "  Auto-filled $Key"
+        Write-Host "  $Key"
     }
 }
 
-Write-Host "Auto-filling .env from local system..."
+Write-Host "Filling .env..."
 
 $envFile = "$target\.env"
 
-# Git identity from local git config
-Set-EnvValue $envFile "GIT_NAME"     (git config --global user.name     2>$null)
-Set-EnvValue $envFile "GIT_EMAIL"    (git config --global user.email    2>$null)
+# From template .env (shared credentials and Azure VM settings)
+foreach ($key in $templateEnv.Keys) {
+    Set-EnvValue $envFile $key $templateEnv[$key]
+}
+
+# From local git config
+Set-EnvValue $envFile "GIT_NAME"     (git config --global user.name      2>$null)
+Set-EnvValue $envFile "GIT_EMAIL"    (git config --global user.email     2>$null)
 Set-EnvValue $envFile "GIT_GPG_KEY"  (git config --global user.signingkey 2>$null)
 Set-EnvValue $envFile "GIT_GPG_SIGN" (git config --global commit.gpgsign  2>$null)
 
-# Azure VM project path (project-specific, always set)
+# Project-specific (always set)
 $remotePath = "~/projects/$projectName"
 $content = Get-Content $envFile -Raw
 $content = $content -replace "(?m)^AZURE_VM_PROJECT_PATH=.*$", "AZURE_VM_PROJECT_PATH=$remotePath"
 $content | Set-Content $envFile -NoNewline
-Write-Host "  Auto-filled AZURE_VM_PROJECT_PATH=$remotePath"
+Write-Host "  AZURE_VM_PROJECT_PATH=$remotePath"
 
 Write-Host "Local project created."
 
 # --- Remote setup (if Azure VM is configured) --------------------------------
 
-$vmHost = $envValues["AZURE_VM_HOST"]
+$vmHost = $templateEnv["AZURE_VM_HOST"]
 
 if ($vmHost) {
     Write-Host ""
@@ -101,13 +103,13 @@ if ($vmHost) {
     # Create directory structure on VM
     ssh pi-vm "mkdir -p $remotePath/workspace $remotePath/.pi-data"
 
-    # Copy template files to VM
+    # Copy files to VM
     $remoteFiles = @("Dockerfile", "docker-compose.yml", ".env.example")
     foreach ($file in $remoteFiles) {
         scp "$templateDir\$file" "pi-vm:$remotePath/$file"
     }
 
-    # Copy .env to VM
+    # Copy the filled .env to VM
     scp $envFile "pi-vm:$remotePath/.env"
     ssh pi-vm "chmod 600 $remotePath/.env"
     Write-Host "Copied .env to VM."
