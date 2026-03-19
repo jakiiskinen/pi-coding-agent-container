@@ -2,6 +2,13 @@ param(
     [string]$ProjectPath
 )
 
+trap {
+    Write-Host ""
+    Write-Host "ERROR: $_" -ForegroundColor Red
+    Read-Host "Press Enter to close"
+    exit 1
+}
+
 $templateDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Load .env variables from template dir
@@ -31,7 +38,7 @@ if (Test-Path $target) {
 
 $projectName = Split-Path -Leaf $target
 
-# ── Local setup ───────────────────────────────────────────────────────────────
+# --- Local setup -------------------------------------------------------------
 
 Write-Host "Creating local project at: $target"
 New-Item -ItemType Directory -Path $target | Out-Null
@@ -54,31 +61,29 @@ if (Test-Path "$templateDir\.env") {
 
 Write-Host "Local project created."
 
-# ── Remote setup (if Azure VM is configured) ──────────────────────────────────
+# --- Remote setup (if Azure VM is configured) --------------------------------
 
-$vmUser = $envValues["AZURE_VM_USER"]
 $vmHost = $envValues["AZURE_VM_HOST"]
 
-if ($vmHost -and $vmUser) {
+if ($vmHost) {
     Write-Host ""
-    Write-Host "Azure VM detected ($vmHost). Setting up remote project..."
+    Write-Host "Azure VM detected. Setting up remote project..."
 
     $remotePath = "~/projects/$projectName"
 
     # Create directory structure on VM
-    ssh "${vmUser}@${vmHost}" "mkdir -p $remotePath/workspace $remotePath/.pi-data"
+    ssh pi-vm "mkdir -p $remotePath/workspace $remotePath/.pi-data"
 
     # Copy template files to VM
     $remoteFiles = @("Dockerfile", "docker-compose.yml", ".env.example")
     foreach ($file in $remoteFiles) {
-        scp "$templateDir\$file" "${vmUser}@${vmHost}:$remotePath/$file" | Out-Null
+        scp "$templateDir\$file" "pi-vm:$remotePath/$file"
     }
 
     # Copy .env to VM
     if (Test-Path "$templateDir\.env") {
-        scp "$templateDir\.env" "${vmUser}@${vmHost}:$remotePath/.env" | Out-Null
-        # Restrict permissions on remote .env
-        ssh "${vmUser}@${vmHost}" "chmod 600 $remotePath/.env"
+        scp "$templateDir\.env" "pi-vm:$remotePath/.env"
+        ssh pi-vm "chmod 600 $remotePath/.env"
         Write-Host "Copied .env to VM."
     }
 
@@ -93,23 +98,23 @@ if ($vmHost -and $vmUser) {
 
     # Build Pi agent image on VM if not already built
     Write-Host "Checking Pi agent image on VM..."
-    $imageExists = ssh "${vmUser}@${vmHost}" "docker images -q local/pi-coding-agent:latest 2>/dev/null"
+    $imageExists = ssh pi-vm "docker images -q local/pi-coding-agent:latest 2>/dev/null"
     if (-not $imageExists) {
         Write-Host "Building Pi agent image on VM (this takes a few minutes)..."
-        ssh "${vmUser}@${vmHost}" "cd $remotePath && docker compose build"
+        ssh pi-vm "docker compose -f $remotePath/docker-compose.yml build"
         Write-Host "Image built."
     } else {
         Write-Host "Image already exists on VM."
     }
 
-    Write-Host "Remote project created at ${vmHost}:$remotePath"
+    Write-Host "Remote project created at $remotePath"
 } else {
     Write-Host ""
-    Write-Host "No Azure VM configured in .env — skipping remote setup."
-    Write-Host "Add AZURE_VM_HOST and AZURE_VM_USER to the template .env to enable this."
+    Write-Host "No Azure VM configured in .env - skipping remote setup."
+    Write-Host "Add AZURE_VM_HOST to the template .env to enable this."
 }
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# --- Done --------------------------------------------------------------------
 
 Write-Host ""
 Write-Host "Done. Opening terminal in $target"
