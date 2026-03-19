@@ -111,11 +111,11 @@ if ($Local) {
     # Check for Pi updates on VM and rebuild image if needed
     Write-Host "Checking for Pi updates..."
     try {
-        $installedVersion = ssh -o StrictHostKeyChecking=no "${vmUser}@${vmHost}" "docker run --rm local/pi-coding-agent:latest --version 2>/dev/null"
+        $installedVersion = ssh pi-vm "docker run --rm local/pi-coding-agent:latest --version 2>/dev/null"
         $latestVersion = (Invoke-RestMethod "https://registry.npmjs.org/@mariozechner/pi-coding-agent/latest").version
         if ($installedVersion -ne $latestVersion) {
             Write-Host "Update available: $installedVersion -> $latestVersion. Rebuilding image on VM..."
-            ssh -o StrictHostKeyChecking=no "${vmUser}@${vmHost}" "docker compose -f $vmPath/docker-compose.yml build --no-cache"
+            ssh pi-vm "docker compose -f $vmPath/docker-compose.yml build --no-cache"
             Write-Host "Image updated to $latestVersion."
         } else {
             Write-Host "Pi is up to date ($installedVersion)."
@@ -127,7 +127,7 @@ if ($Local) {
     # Open Windows Terminal:
     #   Left pane  — SSH into VM, attach to (or create) a tmux session for this project
     #   Right pane — local workspace folder in PowerShell (same files via any sync, or just for reference)
-    $sshCmd = "ssh -o StrictHostKeyChecking=no -t ${vmUser}@${vmHost} 'tmux new-session -A -s $session -c $vmPath'"
+    $sshCmd = "ssh -t pi-vm 'tmux new-session -A -s $session -c $vmPath'"
 
     wt new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V -d "$dir\workspace" --title "Workspace" powershell
 
