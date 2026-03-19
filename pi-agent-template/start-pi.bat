@@ -1,2 +1,2 @@
 @echo off
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0start-pi.ps1"
+powershell -ExecutionPolicy Bypass -File "%~dp0start-pi.ps1"
