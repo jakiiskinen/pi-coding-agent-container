@@ -132,5 +132,5 @@ if ($Local) {
     wt new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V -d "$dir\workspace" --title "Workspace" powershell
 
     # Open VS Code connected to the VM workspace
-    code --remote "ssh-remote+$vmHost" "$vmPath/workspace"
+    code --remote "ssh-remote+pi-vm" "$vmPath/workspace"
 }
