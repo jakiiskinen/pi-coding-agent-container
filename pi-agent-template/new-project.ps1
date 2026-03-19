@@ -68,6 +68,36 @@ function Set-EnvValue {
     }
 }
 
+# Reads a key's current value from an .env file
+function Get-EnvValue {
+    param([string]$FilePath, [string]$Key)
+    $line = Get-Content $FilePath | Where-Object { $_ -match "^$Key=(.*)$" } | Select-Object -First 1
+    if ($line -match "^$Key=(.+)$") { return $matches[1].Trim() }
+    return $null
+}
+
+# Prompts the user to set or replace a key in .env
+function Prompt-EnvValue {
+    param([string]$FilePath, [string]$Key, [string]$Label, [string]$Warning)
+    $current = Get-EnvValue $FilePath $Key
+    $status = if ($current) { "(set)" } else { "(not set)" }
+    Write-Host ""
+    Write-Host "${Label}: $status"
+    if ($current) {
+        $typed = Read-Host "Enter new value (leave blank to keep current)"
+    } else {
+        $typed = Read-Host "Enter value (leave blank to skip)"
+    }
+    if ($typed) {
+        $content = Get-Content $FilePath -Raw
+        $content = $content -replace "(?m)^$Key=.*$", "$Key=$typed"
+        $content | Set-Content $FilePath -NoNewline
+        Write-Host "  $Key updated."
+    } elseif (-not $current -and $Warning) {
+        Write-Host "  WARNING: $Warning" -ForegroundColor Yellow
+    }
+}
+
 Write-Host "Filling .env..."
 
 $envFile = "$target\.env"
@@ -77,11 +107,45 @@ foreach ($key in $templateEnv.Keys) {
     Set-EnvValue $envFile $key $templateEnv[$key]
 }
 
-# From local git config
-Set-EnvValue $envFile "GIT_NAME"     (git config --global user.name      2>$null)
-Set-EnvValue $envFile "GIT_EMAIL"    (git config --global user.email     2>$null)
+# From local git config (GPG only - Git identity is confirmed interactively below)
 Set-EnvValue $envFile "GIT_GPG_KEY"  (git config --global user.signingkey 2>$null)
 Set-EnvValue $envFile "GIT_GPG_SIGN" (git config --global commit.gpgsign  2>$null)
+
+# --- Git identity confirmation -----------------------------------------------
+
+$gitName  = git config --global user.name  2>$null
+$gitEmail = git config --global user.email 2>$null
+
+Write-Host ""
+Write-Host "Git identity (used for commits inside the container):"
+Write-Host "  Name : $(if ($gitName)  { $gitName }  else { '(not set)' })"
+Write-Host "  Email: $(if ($gitEmail) { $gitEmail } else { '(not set)' })"
+$gitConfirm = Read-Host "Are these correct? [Y/n]"
+if ($gitConfirm -match '^[Nn]') {
+    $typed = Read-Host "  Git name  [$gitName]"
+    if ($typed) { $gitName = $typed }
+    $typed = Read-Host "  Git email [$gitEmail]"
+    if ($typed) { $gitEmail = $typed }
+}
+
+if (-not $gitName -or -not $gitEmail) {
+    Write-Host "WARNING: Git name or email is empty. Commits inside the container will have no author identity." -ForegroundColor Yellow
+}
+
+$content = Get-Content $envFile -Raw
+$content = $content -replace "(?m)^GIT_NAME=.*$",  "GIT_NAME=$gitName"
+$content = $content -replace "(?m)^GIT_EMAIL=.*$", "GIT_EMAIL=$gitEmail"
+$content | Set-Content $envFile -NoNewline
+
+# --- Anthropic API key -------------------------------------------------------
+
+Prompt-EnvValue $envFile "ANTHROPIC_API_KEY" "Anthropic API key" `
+    "ANTHROPIC_API_KEY is empty - the agent will not start without it."
+
+# --- GitHub token ------------------------------------------------------------
+
+Prompt-EnvValue $envFile "GITHUB_TOKEN" "GitHub token" `
+    "GITHUB_TOKEN is empty - GitHub operations inside the container will not work."
 
 # Project-specific (always set)
 $remotePath = "~/projects/$projectName"
@@ -117,6 +181,12 @@ if ($vmHost) {
     ssh pi-vm "chmod 600 $remotePath/.env"
     Write-Host "Copied .env to VM."
 
+    # Set git identity on VM so the workspace shell has it outside the container.
+    # Note: this sets --global config, so it applies to all projects on the VM.
+    if ($gitName)  { ssh pi-vm "git config --global user.name '$gitName'" }
+    if ($gitEmail) { ssh pi-vm "git config --global user.email '$gitEmail'" }
+    Write-Host "Set git identity on VM (global)."
+
     # Build Pi agent image on VM if not already built
     Write-Host "Checking Pi agent image on VM..."
     $imageExists = ssh pi-vm "docker images -q local/pi-coding-agent:latest 2>/dev/null"
@@ -139,4 +209,4 @@ if ($vmHost) {
 
 Write-Host ""
 Write-Host "Done. Opening terminal in $target"
-wt new-tab -d $target
+wt --window 0 new-tab -d $target

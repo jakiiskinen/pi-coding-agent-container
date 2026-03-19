@@ -1,3 +1,2 @@
 @echo off
-powershell -ExecutionPolicy Bypass -File "%~dp0start-pi.ps1" -Local
-if %errorlevel% neq 0 pause
+wt --window 0 new-tab powershell -ExecutionPolicy Bypass -File "%~dp0start-pi.ps1" -Local

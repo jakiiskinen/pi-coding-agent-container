@@ -62,9 +62,11 @@ Double-click `new-project.bat`, enter the full local path (e.g. `C:\git\MyProjec
 
 The script:
 1. Creates the local project folder with all config files
-2. If Azure VM is configured — also creates the project folder on the VM, copies config, and builds the Pi image if not already present
-3. Sets `AZURE_VM_PROJECT_PATH` in the local `.env` automatically
-4. Opens a terminal in the new project folder
+2. Prompts you to confirm your git identity, Anthropic API key, and GitHub token
+3. If Azure VM is configured — also creates the project folder on the VM, copies config, and builds the Pi image if not already present
+4. If Azure VM is configured — sets your git identity in the VM's **global** git config (`~/.gitconfig`), so the workspace shell can run git commands outside the container. This affects all projects on the VM.
+5. Sets `AZURE_VM_PROJECT_PATH` in the local `.env` automatically
+6. Opens a terminal in the new project folder
 
 Then clone your repo into the workspace folder:
 
@@ -82,10 +84,10 @@ git clone <repo-url> .
 Double-click `start-pi.bat`. The script:
 1. Checks if the Azure VM is running — starts it if deallocated
 2. Waits for SSH to be available
-3. Checks for Pi updates on the VM (notifies if newer version available)
+3. Checks for Pi updates on the VM — auto-rebuilds image if newer version available
 4. Opens Windows Terminal:
    - **Left pane** — SSH into VM → tmux session for this project → run Pi agent
-   - **Right pane** — local workspace folder in PowerShell
+   - **Right pane** — SSH session into VM workspace folder
 5. Opens VS Code connected to the VM workspace via Remote-SSH
 
 ### Local mode
@@ -134,8 +136,6 @@ MyProject\
   start-pi.bat            # Launch cloud mode (default)
   start-pi-local.bat      # Launch local container mode
   start-pi.ps1            # Called by both bat files
-  new-project.bat         # Create a new project environment
-  new-project.ps1         # Called by new-project.bat
   workspace\              # Your project files (clone repos here)
   .pi-data\               # Pi agent sessions, config, auth (local mode only)
 ```
@@ -170,12 +170,21 @@ AZURE_VM_PROJECT_PATH=  # Project path on VM (set automatically by new-project.b
 
 ## Updating Pi
 
-**Cloud mode:** SSH into the VM and run in the project folder:
+Both modes check for Pi updates automatically on each launch and rebuild the image if a newer version is available.
+
+To force a rebuild manually:
+
+**Cloud mode:**
 ```bash
+ssh pi-vm
+cd ~/projects/<project-name>
 docker compose build --no-cache
 ```
 
-**Local mode:** Handled automatically on each `start-pi-local.bat` launch. If a newer npm version is detected the image is rebuilt before opening.
+**Local mode:** Delete the local image, then launch normally:
+```powershell
+docker rmi local/pi-coding-agent:latest
+```
 
 ---
 
@@ -183,7 +192,7 @@ docker compose build --no-cache
 
 | What changed | Cloud mode | Local mode |
 |---|---|---|
-| Pi new version | SSH to VM → `docker compose build --no-cache` | Auto on next start |
+| Pi new version | Auto on next start | Auto on next start |
 | Template config files changed | Copy updated files to project folders manually | Same |
 | Start fresh on a project | Delete local folder + SSH to VM and delete remote folder, then re-run `new-project.bat` | Delete local folder, re-run `new-project.bat` |
 

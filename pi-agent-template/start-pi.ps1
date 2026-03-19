@@ -62,7 +62,7 @@ if ($Local) {
     # Clean up orphaned containers from previous runs
     docker compose down --remove-orphans 2>$null
 
-    wt new-tab -d $dir --title "Pi Agent (Local)" powershell -NoExit -Command "docker compose run --rm pi-agent" `; split-pane -V -d "$dir\workspace" --title "Workspace (Local)" powershell
+    wt --window 0 new-tab -d $dir --title "Pi Agent (Local)" powershell -NoExit -Command "docker compose run --rm pi-agent" `; split-pane -V -d "$dir\workspace" --title "Workspace (Local)" powershell
 
     code "$dir\workspace"
 
@@ -139,7 +139,7 @@ if ($Local) {
     $sshCmd = "ssh -t pi-vm 'tmux attach-session -t $session'"
     $workspaceSshCmd = "ssh -t pi-vm 'cd $vmPath/workspace && exec bash'"
 
-    wt new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V --title "Workspace (VM)" powershell -NoExit -Command $workspaceSshCmd
+    wt --window 0 new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V --title "Workspace (VM)" powershell -NoExit -Command $workspaceSshCmd
 
     # Open VS Code connected to the VM workspace
     code --remote "ssh-remote+pi-vm" "$vmPath/workspace"

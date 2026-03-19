@@ -1,3 +1,2 @@
 @echo off
-powershell -ExecutionPolicy Bypass -File "%~dp0new-project.ps1"
-if %errorlevel% neq 0 pause
+wt --window 0 new-tab powershell -NoExit -ExecutionPolicy Bypass -File "%~dp0new-project.ps1"
