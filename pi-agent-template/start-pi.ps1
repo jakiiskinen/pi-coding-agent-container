@@ -62,9 +62,12 @@ if ($Local) {
     # Clean up orphaned containers from previous runs
     docker compose down --remove-orphans 2>$null
 
-    wt --window 0 new-tab -d $dir --title "Pi Agent (Local)" powershell -NoExit -Command "docker compose run --rm pi-agent" `; split-pane -V -d "$dir\workspace" --title "Workspace (Local)" powershell
+    wt --window last new-tab -d $dir --title "Pi Agent (Local)" powershell -NoExit -Command "docker compose run --rm pi-agent" `; split-pane -V -d "$dir\workspace" --title "Workspace (Local)" powershell
 
     code "$dir\workspace"
+
+    # Give WT time to create the new tabs before this script tab closes.
+    Start-Sleep -Seconds 3
 
 # --- AZURE VM MODE (DEFAULT) -------------------------------------------------
 } else {
@@ -139,8 +142,12 @@ if ($Local) {
     $sshCmd = "ssh -t pi-vm 'tmux attach-session -t $session'"
     $workspaceSshCmd = "ssh -t pi-vm 'cd $vmPath/workspace && exec bash'"
 
-    wt --window 0 new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V --title "Workspace (VM)" powershell -NoExit -Command $workspaceSshCmd
+    wt --window last new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V --title "Workspace (VM)" powershell -NoExit -Command $workspaceSshCmd
 
     # Open VS Code connected to the VM workspace
     code --remote "ssh-remote+pi-vm" "$vmPath/workspace"
+
+    # Give WT time to create the new tabs before this script tab closes.
+    # Without this, a race condition can close the window when launched from Explorer.
+    Start-Sleep -Seconds 3
 }
