@@ -115,7 +115,7 @@ if ($Local) {
         $latestVersion = (Invoke-RestMethod "https://registry.npmjs.org/@mariozechner/pi-coding-agent/latest").version
         if ($installedVersion -ne $latestVersion) {
             Write-Host "Update available: $installedVersion -> $latestVersion. Rebuilding image on VM..."
-            ssh "${vmUser}@${vmHost}" "cd $vmPath && docker compose build --no-cache"
+            ssh "${vmUser}@${vmHost}" "docker compose -f $vmPath/docker-compose.yml build --no-cache"
             Write-Host "Image updated to $latestVersion."
         } else {
             Write-Host "Pi is up to date ($installedVersion)."
