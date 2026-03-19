@@ -177,6 +177,14 @@ Host pi-vm
 
 Then in VS Code: `Remote-SSH: Connect to Host → pi-vm`.
 
+On first connect, VS Code prompts for the remote platform and saves the answer to its user `settings.json` (`%APPDATA%\Code\User\settings.json`). To skip the prompt entirely, pre-populate it:
+
+```json
+"remote.SSH.remotePlatform": {
+    "pi-vm": "linux"
+}
+```
+
 ---
 
 ## Cost Estimate
