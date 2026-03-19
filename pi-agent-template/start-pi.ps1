@@ -131,11 +131,12 @@ if ($Local) {
     #   Left pane  — SSH into VM, attach to (or create) a tmux session for this project
     #   Right pane — local workspace folder in PowerShell (same files via any sync, or just for reference)
     ssh pi-vm "tmux has-session -t $session 2>/dev/null"
-    if ($LASTEXITCODE -eq 0) {
-        $sshCmd = "ssh -t pi-vm 'tmux attach-session -t $session'"
-    } else {
-        $sshCmd = "ssh -t pi-vm 'tmux new-session -s $session -c $vmPath -- docker compose run --rm pi-agent'"
+    if ($LASTEXITCODE -ne 0) {
+        # New session: create detached, then send pi start command as keystrokes
+        ssh pi-vm "tmux new-session -d -s $session -c $vmPath"
+        ssh pi-vm "tmux send-keys -t $session 'docker compose run --rm pi-agent' Enter"
     }
+    $sshCmd = "ssh -t pi-vm 'tmux attach-session -t $session'"
 
     wt new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V -d "$dir\workspace" --title "Workspace" powershell
 
