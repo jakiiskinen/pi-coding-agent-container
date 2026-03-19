@@ -53,11 +53,40 @@ New-Item -ItemType Directory -Path "$target\.pi-data"  | Out-Null
 
 if (Test-Path "$templateDir\.env") {
     Copy-Item "$templateDir\.env" "$target\.env"
-    Write-Host "Copied .env from template."
 } else {
     Copy-Item "$target\.env.example" "$target\.env"
-    Write-Host "No .env found — copied .env.example. Please fill in credentials."
 }
+
+# --- Auto-fill .env with values derivable from the local system --------------
+
+function Set-EnvValue {
+    param([string]$FilePath, [string]$Key, [string]$Value)
+    if (-not $Value) { return }
+    $content = Get-Content $FilePath -Raw
+    # Only fill in if the key exists and is currently empty
+    if ($content -match "(?m)^$Key=\s*$") {
+        $content = $content -replace "(?m)^$Key=\s*$", "$Key=$Value"
+        $content | Set-Content $FilePath -NoNewline
+        Write-Host "  Auto-filled $Key"
+    }
+}
+
+Write-Host "Auto-filling .env from local system..."
+
+$envFile = "$target\.env"
+
+# Git identity from local git config
+Set-EnvValue $envFile "GIT_NAME"     (git config --global user.name     2>$null)
+Set-EnvValue $envFile "GIT_EMAIL"    (git config --global user.email    2>$null)
+Set-EnvValue $envFile "GIT_GPG_KEY"  (git config --global user.signingkey 2>$null)
+Set-EnvValue $envFile "GIT_GPG_SIGN" (git config --global commit.gpgsign  2>$null)
+
+# Azure VM project path (project-specific, always set)
+$remotePath = "~/projects/$projectName"
+$content = Get-Content $envFile -Raw
+$content = $content -replace "(?m)^AZURE_VM_PROJECT_PATH=.*$", "AZURE_VM_PROJECT_PATH=$remotePath"
+$content | Set-Content $envFile -NoNewline
+Write-Host "  Auto-filled AZURE_VM_PROJECT_PATH=$remotePath"
 
 Write-Host "Local project created."
 
@@ -69,8 +98,6 @@ if ($vmHost) {
     Write-Host ""
     Write-Host "Azure VM detected. Setting up remote project..."
 
-    $remotePath = "~/projects/$projectName"
-
     # Create directory structure on VM
     ssh pi-vm "mkdir -p $remotePath/workspace $remotePath/.pi-data"
 
@@ -81,20 +108,9 @@ if ($vmHost) {
     }
 
     # Copy .env to VM
-    if (Test-Path "$templateDir\.env") {
-        scp "$templateDir\.env" "pi-vm:$remotePath/.env"
-        ssh pi-vm "chmod 600 $remotePath/.env"
-        Write-Host "Copied .env to VM."
-    }
-
-    # Update AZURE_VM_PROJECT_PATH in local .env for this project
-    $localEnv = Get-Content "$target\.env" -Raw
-    if ($localEnv -match "AZURE_VM_PROJECT_PATH=") {
-        $localEnv = $localEnv -replace "AZURE_VM_PROJECT_PATH=.*", "AZURE_VM_PROJECT_PATH=$remotePath"
-    } else {
-        $localEnv += "`nAZURE_VM_PROJECT_PATH=$remotePath"
-    }
-    $localEnv | Set-Content "$target\.env"
+    scp $envFile "pi-vm:$remotePath/.env"
+    ssh pi-vm "chmod 600 $remotePath/.env"
+    Write-Host "Copied .env to VM."
 
     # Build Pi agent image on VM if not already built
     Write-Host "Checking Pi agent image on VM..."
