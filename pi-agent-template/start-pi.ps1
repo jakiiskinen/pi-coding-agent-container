@@ -129,7 +129,7 @@ if ($Local) {
 
     # Open Windows Terminal:
     #   Left pane  — SSH into VM, attach to (or create) a tmux session for this project
-    #   Right pane — local workspace folder in PowerShell (same files via any sync, or just for reference)
+    #   Right pane — SSH into VM workspace folder
     ssh pi-vm "tmux has-session -t $session 2>/dev/null"
     if ($LASTEXITCODE -ne 0) {
         # New session: create detached, then send pi start command as keystrokes
@@ -137,8 +137,9 @@ if ($Local) {
         ssh pi-vm "tmux send-keys -t $session 'docker compose run --rm pi-agent' Enter"
     }
     $sshCmd = "ssh -t pi-vm 'tmux attach-session -t $session'"
+    $workspaceSshCmd = "ssh -t pi-vm 'cd $vmPath/workspace && exec bash'"
 
-    wt new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V -d "$dir\workspace" --title "Workspace" powershell
+    wt new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V --title "Workspace (VM)" powershell -NoExit -Command $workspaceSshCmd
 
     # Open VS Code connected to the VM workspace
     code --remote "ssh-remote+pi-vm" "$vmPath/workspace"
