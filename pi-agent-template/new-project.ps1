@@ -100,6 +100,9 @@ if ($vmHost) {
     Write-Host ""
     Write-Host "Azure VM detected. Setting up remote project..."
 
+    # Resolve ~ to absolute path so it works in all contexts (tmux -c, docker PWD, etc.)
+    $remotePath = (ssh pi-vm "echo $remotePath").Trim()
+
     # Create directory structure on VM
     ssh pi-vm "mkdir -p $remotePath/workspace $remotePath/.pi-data"
 

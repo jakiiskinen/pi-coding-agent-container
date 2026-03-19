@@ -76,6 +76,9 @@ if ($Local) {
     $vmPath    = $env:AZURE_VM_PROJECT_PATH
     $session   = Split-Path -Leaf $dir
 
+    # Expand ~ in vmPath — tmux -c does not expand tilde
+    $vmPath    = (ssh pi-vm "echo $vmPath").Trim()
+
     if (-not $vmRg -or -not $vmName -or -not $vmHost -or -not $vmPath) {
         Write-Error "Azure VM not configured. Add AZURE_VM_RG, AZURE_VM_NAME, AZURE_VM_USER, AZURE_VM_HOST, AZURE_VM_PROJECT_PATH to .env - or run start-pi-local.bat instead."
         Read-Host "Press Enter to close"
