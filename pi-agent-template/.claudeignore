@@ -1,0 +1,6 @@
+# Prevent Claude from reading sensitive files
+.env
+*.pem
+*.key
+*.pfx
+*.p12
