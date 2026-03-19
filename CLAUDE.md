@@ -42,6 +42,14 @@ trap {
 }
 ```
 
+### No semicolons in commands passed to wt
+`wt` treats `;` as its own subcommand separator. Any string containing `;`
+passed as a `-Command` argument to `wt` will be misparsed.
+
+- BAD:  `wt new-tab powershell -Command "ssh pi-vm 'cmd1; cmd2'"`
+- GOOD: Build the command before calling wt so it contains no semicolons.
+        Pre-compute any branching logic (if/else) in PowerShell first.
+
 ### .bat launchers must pause on error
 ```batch
 powershell -ExecutionPolicy Bypass -File "%~dp0script.ps1"
