@@ -15,6 +15,9 @@
     SshKeyPath       = "$HOME\.ssh\pi-agent-vm"
     DiskSizeGb       = 64
     AutoShutdownTime = "2200"
+    # Shut down if avg CPU stays below CpuThresholdPct% for IdleMinutes minutes
+    CpuThresholdPct  = 5
+    IdleMinutes      = 30
     TagOwner         = "your-email@example.com"
     TagEnvironment   = "dev"
     TagProject       = "ai-coding-agent"

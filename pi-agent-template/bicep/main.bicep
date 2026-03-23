@@ -26,6 +26,15 @@ param diskSizeGb int = 64
 @description('Daily auto-shutdown time UTC in HHMM format')
 param autoShutdownTime string = '2200'
 
+@description('CPU % below which VM is considered idle')
+param cpuIdleThresholdPct int = 5
+
+@description('Minutes of low CPU before idle shutdown triggers')
+param cpuIdleMinutes int = 30
+
+@description('Deployment time - used to set schedule start (do not override)')
+param deployTime string = utcNow()
+
 @description('Owner tag')
 param tagOwner string = ''
 
@@ -53,6 +62,11 @@ var automationName      = '${vmName}-auto'
 var vmContributorRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '9980e02c-c2be-4d73-94e8-173b1dc7cf3c'
+)
+
+var monitoringReaderRoleId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
 )
 
 // --- Network Security Group --------------------------------------------------
@@ -236,6 +250,24 @@ resource vmVariable 'Microsoft.Automation/automationAccounts/variables@2022-08-0
   }
 }
 
+resource cpuThresholdVariable 'Microsoft.Automation/automationAccounts/variables@2022-08-08' = {
+  parent: automationAccount
+  name: 'CpuThreshold'
+  properties: {
+    value: '${cpuIdleThresholdPct}'
+    isEncrypted: false
+  }
+}
+
+resource idleMinutesVariable 'Microsoft.Automation/automationAccounts/variables@2022-08-08' = {
+  parent: automationAccount
+  name: 'IdleMinutes'
+  properties: {
+    value: '${cpuIdleMinutes}'
+    isEncrypted: false
+  }
+}
+
 // --- Role Assignment: Automation Account can deallocate the VM ---------------
 
 resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -245,6 +277,32 @@ resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     roleDefinitionId: vmContributorRoleId
     principalId: automationAccount.identity.principalId
     principalType: 'ServicePrincipal'
+  }
+}
+
+// --- Role Assignment: Automation Account can read VM metrics -----------------
+
+resource monitoringRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: vm
+  name: guid(vm.id, automationAccount.id, monitoringReaderRoleId)
+  properties: {
+    roleDefinitionId: monitoringReaderRoleId
+    principalId: automationAccount.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// --- Idle Check Schedule (every 15 minutes) ----------------------------------
+
+resource idleCheckSchedule 'Microsoft.Automation/automationAccounts/schedules@2022-08-08' = {
+  parent: automationAccount
+  name: 'IdleCheck'
+  properties: {
+    frequency: 'Minute'
+    interval: 15
+    startTime: dateTimeAdd(deployTime, 'PT5M')
+    timeZone: 'UTC'
+    description: 'Triggers the ShutdownOnIdle runbook every 15 minutes'
   }
 }
 

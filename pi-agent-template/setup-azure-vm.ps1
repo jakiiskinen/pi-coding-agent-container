@@ -17,6 +17,8 @@ param(
     [string]$SshKeyPath        = "",
     [int]   $DiskSizeGb        = 0,
     [string]$AutoShutdownTime  = "",
+    [int]   $CpuThresholdPct   = 0,
+    [int]   $IdleMinutes       = 0,
     [string]$TagOwner          = "",
     [string]$TagEnvironment    = "",
     [string]$TagProject        = ""
@@ -130,6 +132,7 @@ $deployment = az deployment group create `
     --parameters vmName=$VmName location=$Location vmSize=$VmSize `
                  adminUsername=$AdminUser sshPublicKey=$sshPublicKey `
                  diskSizeGb=$DiskSizeGb autoShutdownTime=$AutoShutdownTime `
+                 cpuIdleThresholdPct=$CpuThresholdPct cpuIdleMinutes=$IdleMinutes `
                  tagOwner=$TagOwner tagEnvironment=$TagEnvironment tagProject=$TagProject `
     --output json | ConvertFrom-Json
 $ErrorActionPreference = "Stop"
@@ -152,11 +155,46 @@ $runbookName = "ShutdownOnIdle"
 $runbookContent = @'
 Disable-AzContextAutosave -Scope Process | Out-Null
 Connect-AzAccount -Identity | Out-Null
-$rg = Get-AutomationVariable -Name 'ResourceGroup'
-$vm = Get-AutomationVariable -Name 'VmName'
-Write-Output "Deallocating $vm in $rg..."
-Stop-AzVM -ResourceGroupName $rg -Name $vm -Force
-Write-Output "Done."
+
+$rg        = Get-AutomationVariable -Name 'ResourceGroup'
+$vmName    = Get-AutomationVariable -Name 'VmName'
+$threshold = [double](Get-AutomationVariable -Name 'CpuThreshold')
+$idleMins  = [int](Get-AutomationVariable -Name 'IdleMinutes')
+
+# Check VM power state - skip if already deallocated
+$vmStatus   = Get-AzVM -ResourceGroupName $rg -Name $vmName -Status
+$powerState = ($vmStatus.Statuses | Where-Object { $_.Code -like 'PowerState/*' }).DisplayStatus
+if ($powerState -ne 'VM running') {
+    Write-Output "VM is not running ($powerState). Skipping."
+    exit
+}
+
+# Query CPU percentage via Azure Monitor REST API
+$ctx      = Get-AzContext
+$subId    = $ctx.Subscription.Id
+$token    = (Get-AzAccessToken -ResourceUrl 'https://management.azure.com').Token
+$end      = [DateTime]::UtcNow
+$start    = $end.AddMinutes(-$idleMins)
+$timespan = "$($start.ToString('yyyy-MM-ddTHH:mm:ssZ'))/$($end.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+$uri      = "https://management.azure.com/subscriptions/$subId/resourceGroups/$rg/providers/Microsoft.Compute/virtualMachines/$vmName/providers/microsoft.insights/metrics?api-version=2019-07-01&metricnames=Percentage+CPU&timespan=$timespan&interval=PT5M&aggregation=average"
+$resp     = Invoke-RestMethod -Uri $uri -Headers @{ Authorization = "Bearer $token" } -Method Get
+$points   = $resp.value[0].timeseries[0].data | Where-Object { $null -ne $_.average }
+
+if (-not $points) {
+    Write-Output "No CPU data for the last $idleMins minutes. Skipping."
+    exit
+}
+
+$avgCpu = ($points | Measure-Object -Property average -Average).Average
+Write-Output "Avg CPU last $idleMins min: $([math]::Round($avgCpu, 2))% (threshold: $threshold%)"
+
+if ($avgCpu -lt $threshold) {
+    Write-Output "CPU idle - deallocating $vmName in $rg..."
+    Stop-AzVM -ResourceGroupName $rg -Name $vmName -Force
+    Write-Output "Done."
+} else {
+    Write-Output "CPU active - VM stays running."
+}
 '@
 
 $tmpFile = [System.IO.Path]::GetTempFileName() + ".ps1"
@@ -199,6 +237,23 @@ if (-not $uploaded) {
         --output none
 
     Write-Host "Runbook published."
+
+    # Link the IdleCheck schedule to the runbook
+    Write-Host "Linking IdleCheck schedule to runbook..."
+    $jobScheduleId = [guid]::NewGuid().ToString()
+    az automation job-schedule create `
+        --resource-group $ResourceGroup `
+        --automation-account-name $automationAccount `
+        --job-schedule-id $jobScheduleId `
+        --runbook-name $runbookName `
+        --schedule-name "IdleCheck" `
+        --only-show-errors `
+        --output none 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Schedule linked. Runbook will check CPU every 15 minutes."
+    } else {
+        Write-Host "Note: Schedule link may already exist (re-deployment). Skipping."
+    }
 }
 
 $ErrorActionPreference = "Stop"
@@ -243,7 +298,7 @@ Write-Host "  AZURE_VM_HOST=$publicIp"
 Write-Host "  AZURE_VM_PROJECT_PATH=~/projects/YOUR-PROJECT-NAME"
 Write-Host ""
 Write-Host "Note: VM auto-shuts down daily at $AutoShutdownTime UTC."
-Write-Host "      For CPU-idle shutdown, configure via Azure Portal:"
-Write-Host "      Monitor > Alerts > + Create > Metric alert on $VmName"
+Write-Host "      CPU-idle shutdown: shuts down if avg CPU < $CpuThresholdPct% for $IdleMinutes min."
+Write-Host "      Checked every 15 minutes via Azure Automation (ShutdownOnIdle runbook)."
 Write-Host ""
 Read-Host "Press Enter to close"
