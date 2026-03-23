@@ -62,7 +62,7 @@ if ($Local) {
     # Clean up orphaned containers from previous runs
     docker compose down --remove-orphans 2>$null
 
-    wt --window last new-tab -d $dir --title "Pi Agent (Local)" powershell -NoExit -Command "docker compose run --rm pi-agent" `; split-pane -V -d "$dir\workspace" --title "Workspace (Local)" powershell
+    wt --window new --pos 100,100 new-tab -d $dir --title "Pi Agent (Local)" powershell -NoExit -Command "docker compose run --rm pi-agent" `; split-pane -V -d "$dir\workspace" --title "Workspace (Local)" powershell
 
     code "$dir\workspace"
 
@@ -78,9 +78,6 @@ if ($Local) {
     $vmHost    = $env:AZURE_VM_HOST
     $vmPath    = $env:AZURE_VM_PROJECT_PATH
     $session   = Split-Path -Leaf $dir
-
-    # Expand ~ in vmPath — tmux -c does not expand tilde
-    $vmPath    = (ssh pi-vm "echo $vmPath").Trim()
 
     if (-not $vmRg -or -not $vmName -or -not $vmHost -or -not $vmPath) {
         Write-Error "Azure VM not configured. Add AZURE_VM_RG, AZURE_VM_NAME, AZURE_VM_USER, AZURE_VM_HOST, AZURE_VM_PROJECT_PATH to .env - or run start-pi-local.bat instead."
@@ -114,6 +111,9 @@ if ($Local) {
     }
     Write-Host "VM is ready."
 
+    # Expand ~ in vmPath — tmux -c does not expand tilde; must happen after VM is up
+    $vmPath = (ssh pi-vm "echo $vmPath").Trim()
+
     # Check for Pi updates on VM and rebuild image if needed
     Write-Host "Checking for Pi updates..."
     try {
@@ -142,7 +142,7 @@ if ($Local) {
     $sshCmd = "ssh -t pi-vm 'tmux attach-session -t $session'"
     $workspaceSshCmd = "ssh -t pi-vm 'cd $vmPath/workspace && exec bash'"
 
-    wt --window last new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V --title "Workspace (VM)" powershell -NoExit -Command $workspaceSshCmd
+    wt --window new --pos 100,100 new-tab --title "Pi Agent (VM: $session)" powershell -NoExit -Command $sshCmd `; split-pane -V --title "Workspace (VM)" powershell -NoExit -Command $workspaceSshCmd
 
     # Open VS Code connected to the VM workspace
     code --remote "ssh-remote+pi-vm" "$vmPath/workspace"
